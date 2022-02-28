@@ -13,7 +13,12 @@ Inside it, edit the file start.cmd (right click / Edit) and replace the followin
 - YOUR_ADDRESS: Here you will have to indicate the address of your wallet, for example 0x0fa10b766aD2F40110BE9ed1fEFdbcD2bDdB432F.
 - THREADS: Here you must indicate the number of simultaneous threads that the miner will launch, for example 4.
 
-image
+```
+@echo off
+cd miner
+miner.exe 0x0fa10b766aD2F40110BE9ed1fEFdbdbcD2bDdB432F 4
+pause
+```
 
 Save the changes and close it. Now, just doubleclick over start.cmd to start mining.
 

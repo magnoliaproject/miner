@@ -1,0 +1,2 @@
+# miner
+Magnolia miner

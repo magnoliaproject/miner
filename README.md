@@ -1,4 +1,4 @@
-# Mining NOLIA Guide
+# NOLIA Mining Guide
 This is a basic guide on how to mine NOLIA on your PC. To do so, simply follow these steps:
 
 ## Mining in Windows

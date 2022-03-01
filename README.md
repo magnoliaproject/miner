@@ -38,7 +38,7 @@ wget https://github.com/magnoliaproject/miner/releases/download/v1.0/linux64-nol
 Unzip the downloaded file:
 
 ```
-tar xvfj linux64-nolia-miner.tar.gz
+tar xzvf linux64-nolia-miner.tar.gz
 ```
 
 Launch the miner, passing as arguments the wallet address and number of threads:

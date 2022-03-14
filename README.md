@@ -23,6 +23,7 @@ pause
 Save the changes and close it. Now, just doubleclick over start.cmd to start mining.
 
 The miner can also be executed from the command line, passing as arguments the wallet address (-a), number of threads (-t) and coins to mine (-c):
+Default options: -t 2 -c 10
 
 ```
 miner.exe -a 0x0fa10b766aD2F40110BE9ed1fEFdbdbcD2bDdB432F -t 4 -c 10
@@ -41,7 +42,8 @@ Unzip the downloaded file:
 tar xzvf linux64-nolia-miner.tar.gz
 ```
 
-Launch the miner, passing as arguments the wallet address and number of threads:
+Launch the miner, passing as arguments the wallet address (-a), number of threads (-t) and coins to mine (-c):
+Default options: -t 2 -c 10
 
 ```
 ./miner -a 0x0fa10b766aD2F40110BE9ed1fEFdbdbcD2bDdB432F -t 4 -c 10

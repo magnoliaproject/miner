@@ -12,6 +12,8 @@ import warnings
 import random, string
 from colored import fg, bg, attr
 from math import ceil, floor
+import argparse
+import zmq
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -49,7 +51,6 @@ def expand(buf, cnt, space_cost) -> int:
         cnt += 1
     return cnt
 
-
 def mix(buf, cnt, delta, salt, space_cost, time_cost):
     for t in range(time_cost):
         for s in range(space_cost):
@@ -64,14 +65,12 @@ def mix(buf, cnt, delta, salt, space_cost, time_cost):
 def extract(buf) -> bytes:
     return buf[-1]
 
-
 def balloon(password, salt, space_cost, time_cost, delta=3) -> bytes:
     buf = [hash_func(0, password, salt)]
     cnt = 1
     cnt = expand(buf, cnt, space_cost)
     mix(buf, cnt, delta, salt, space_cost, time_cost)
     return extract(buf)
-
 
 def balloon_hash(password, salt):
     delta = 6
@@ -96,31 +95,22 @@ def get_result(hash, diff):
         return 0
 
 def worker(num, address, node, dictmgr, diff, miningid, s, nolia):
-    dictmgr[1] = 0
-    response = ""
     run = 1
     errors = 0
-    print('%s%s%sNET WORKER || Starting networker thread' % (fg(92), bg(0), attr(1)))
+    dictmgr[0] = {'accepted': 0, 'rejected': 0, 'nft': 0}
+    print('%s%s%sNET WORKER || Starting ZMQ thread' % (fg(92), bg(0), attr(1)))
+    context = zmq.Context()
+    socket = context.socket(zmq.SUB)
+    socket.connect ("tcp://magnolia.eslime.net:5555")
+    topicfilter = "getminingtemplate"
+    socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
     while(run):
-        try:
-            nresponse = s.get('https://' + str(node) + '/server.php?q=getvalidatingtemplate&amount=' + str(nolia))
-            data = nresponse.json()
-            dictmgr[1] = data
-            if response != dictmgr[1]:
-                response = dictmgr[1]
-                if num == 0:
-                    print('%s%s%sNET WORKER ||' % (fg(207), bg(0), attr(1)) + ' New block to mine!! Height: ' + str(dictmgr[1]['result']['height']) + ", Diff: " + str(dictmgr[1]['result']['difficulty']) + ", Reward: " + str(dictmgr[1]['result']['amount']) + " NOLIA")
-            time.sleep(3)
-            errors = 0
-
-        except Exception as e:
-            errors = errors + 1
-            if errors % 8 == 0:
-                print("%s%s%sConnection error. Retrying..." % (fg(1), bg(0), attr(1)))
-        except KeyboardInterrupt:
-            run = 0
-            print('$s%s%sInterrupted' % (fg(1), bg(0), attr(1)))
-
+        string = socket.recv()
+        topic, data = string.split()
+        dictmgr[1] = data.decode("utf-8").split(",")
+        print('%s%s%sNET WORKER ||' % (fg(207), bg(0), attr(1)) + ' New block to mine!! Height: ' + str(dictmgr[1][0]))
+        if int(dictmgr[1][0]) % 10 == 0:
+            print('%s%s%sNET WORKER ||' % (fg(207), bg(0), attr(1)) + ' Accepted: ' + str(dictmgr[0]['accepted']) + ', Rejected: ' + str(dictmgr[0]['rejected']) + ', NFT: ' + str(dictmgr[0]['nft']))
 
 def mining(num, address, privkey, pubkey, miningid, cores, dictmgr, diff, s, nolia):
     printed = 0
@@ -140,19 +130,22 @@ def mining(num, address, privkey, pubkey, miningid, cores, dictmgr, diff, s, nol
                 it = int(time.time())
                 n = 0
             a = randomword(16)
-            res = balloon_hash(address + "-" + str(dictmgr[1]['result']['height']) + "-" + str(dictmgr[1]['result']['difficulty']) + "-" + str(dictmgr[1]['result']['amount']) + "-" + str(dictmgr[1]['result']['prevhash']), a)
-            if get_result(res, int(dictmgr[1]['result']['difficulty'])) == 1:
+            res = balloon_hash(address + "-" + str(dictmgr[1][0]) + "-" + str(nolia*int(dictmgr[1][1])) + "-" + str(nolia) + "-" + str(dictmgr[1][2]), a)
+            if get_result(res, int(dictmgr[1][1]*nolia)) == 1:
                 print("%s%s%sMINING || Block found!! Submititting block..." % (fg(2), bg(0), attr(1)))
                 nresponse = s.get('https://' + str(node) + '/server.php?q=eth_submitblock&address=' + str(address) + '&nonce=' + a + '&amount=' + str(nolia))
                 data = nresponse.json()
                 if data['result']['status'] == 'OK':
                     print("%s%s%sMINING || Block accepted!! Hash: " % (fg(2), bg(0), attr(1)) + data['result']['hash'] + ", Reward: " + str(int(data['result']['reward'])/1000000000000000000) + " NOLIA")
+                    dictmgr[0]['accepted'] = dictmgr[0]['accepted'] + 1
+                    if data['result']['nft'] == "YES":
+                        dictmgr[0]['nft'] = dictmgr[0]['nft'] + 1
                 else:
                     print("%s%s%sMINING || Block rejected!! " % (fg(1), bg(0), attr(1)))
+                    dictmgr[0]['rejected'] = dictmgr[0]['rejected'] + 1
             n = n+1
             errors = 0
         except Exception as e:
-            print(str(e))
             errors = errors + 1
         except KeyboardInterrupt:
             run = 0
@@ -176,7 +169,7 @@ def testmining(num, address, dictmgr):
         except KeyboardInterrupt:
             errors = errors + 1
 
-def startmining(address, cores):
+def startmining(address, cores, coins):
     ismining = 0
     miningid = randomword(12)
     s = requests.Session()
@@ -184,8 +177,9 @@ def startmining(address, cores):
     manager = Manager() 
     dictmgr = manager.dict()
     threads = [None] * cores
-    print("Address: " + address + ", Threads: " + str(cores - 1))
-    print("%s%s%sTESTING || Starting testing for calibrate miner. It will take " % (fg(82), bg(0), attr(1)) + str(60+cores+5) + " seconds")
+    nolia = coins
+    print("Address: " + address + ", Threads: " + str(cores - 1) + ", Coins: " + str(coins))
+    print("%s%s%sTESTING || Start testing for calibrate miner. It will take " % (fg(82), bg(0), attr(1)) + str(60+cores+5) + " seconds")
     for i in range(cores-1):
         params = [i, address, dictmgr]
         threads[i] = Process(target=testmining, args=(params))
@@ -200,7 +194,8 @@ def startmining(address, cores):
     hr = floor(dictmgr[0]/60)
     print("%s%s%sTESTING || Test finished!! " % (fg(82), bg(0), attr(1)))
     print("%s%s%sTESTING || Your total hashrate: " % (fg(82), bg(0), attr(1)) + str(hr) + " h/s")
-    nolia = ceil(hr / 100)
+    if ceil(hr / 100) > nolia:
+        nolia = ceil(hr / 100)
     if nolia < 10:
         nolia = 10
     print("%s%s%sTESTING || NOLIA mined per block: " % (fg(82), bg(0), attr(1)) + str(nolia) + " NOLIA")
@@ -224,9 +219,26 @@ def startmining(address, cores):
 if __name__ == '__main__':
     multiprocessing.freeze_support()
     try:
-        args = len(sys.argv)
-        cores = sys.argv[args-1]
-        startmining(sys.argv[args-2].lower(), int(cores)+1)
+        parser = argparse.ArgumentParser(description='Personal information')
+        parser.add_argument('-t', dest='threads', type=int, help='Number of threads')
+        parser.add_argument('-a', dest='address', type=str, help='Your address')
+        parser.add_argument('-c', dest='coins', type=int, help='Coins to mine')
+
+        args = parser.parse_args()
+        
+        if args.threads == None:
+            args.threads = 2
+
+        if args.coins == None:
+            args.coins = 10
+            
+        if args.address == None:
+            args.address = '0x'
+        
+        if args.threads > 0 and len(args.address) == 42:
+            startmining(args.address.lower(), args.threads+1, args.coins)
+        else:
+            print("Invalid options")
     except Exception as e:
         print(e)
         print("Interrupted")
